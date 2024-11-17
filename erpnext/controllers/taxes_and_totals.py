@@ -8,7 +8,6 @@ import frappe
 from frappe import _, scrub
 from frappe.model.document import Document
 from frappe.utils import cint, flt, round_based_on_smallest_currency_fraction
-from frappe.utils.deprecations import deprecated
 
 import erpnext
 from erpnext.accounts.doctype.journal_entry.journal_entry import get_exchange_rate
@@ -75,7 +74,7 @@ class calculate_taxes_and_totals:
 		self.calculate_net_total()
 		self.calculate_tax_withholding_net_total()
 		self.calculate_taxes()
-		self.adjust_grand_total_for_inclusive_tax()
+		self.manipulate_grand_total_for_inclusive_tax()
 		self.calculate_totals()
 		self._cleanup()
 		self.calculate_total_net_weight()
@@ -287,7 +286,7 @@ class calculate_taxes_and_totals:
 			):
 				amount = flt(item.amount) - total_inclusive_tax_amount_per_qty
 
-				item.net_amount = flt(amount / (1 + cumulated_tax_fraction), item.precision("net_amount"))
+				item.net_amount = flt(amount / (1 + cumulated_tax_fraction))
 				item.net_rate = flt(item.net_amount / item.qty, item.precision("net_rate"))
 				item.discount_percentage = flt(
 					item.discount_percentage, item.precision("discount_percentage")
@@ -521,10 +520,22 @@ class calculate_taxes_and_totals:
 			tax.tax_amount = round(tax.tax_amount, 0)
 			tax.tax_amount_after_discount_amount = round(tax.tax_amount_after_discount_amount, 0)
 
-		tax.tax_amount = flt(tax.tax_amount, tax.precision("tax_amount"))
+		# Commented By Vinod
+		# tax.tax_amount = flt(tax.tax_amount, tax.precision("tax_amount"))
+		# tax.tax_amount_after_discount_amount = flt(
+		# 	tax.tax_amount_after_discount_amount, tax.precision("tax_amount")
+		# )
+
+		# START VINOD
+		from frappe.utils import get_number_format_info
+		number_format = frappe.db.get_value("Currency", tax.account_currency, "number_format")
+		decimal_str, comma_str, precision = get_number_format_info(number_format)
+
+		tax.tax_amount = flt(tax.tax_amount, precision)
 		tax.tax_amount_after_discount_amount = flt(
-			tax.tax_amount_after_discount_amount, tax.precision("tax_amount")
+			tax.tax_amount_after_discount_amount, precision
 		)
+		# END VINOD
 
 	def round_off_base_values(self, tax):
 		# Round off to nearest integer based on regional settings
@@ -532,12 +543,7 @@ class calculate_taxes_and_totals:
 			tax.base_tax_amount = round(tax.base_tax_amount, 0)
 			tax.base_tax_amount_after_discount_amount = round(tax.base_tax_amount_after_discount_amount, 0)
 
-	@deprecated
 	def manipulate_grand_total_for_inclusive_tax(self):
-		# for backward compatablility - if in case used by an external application
-		return self.adjust_grand_total_for_inclusive_tax()
-
-	def adjust_grand_total_for_inclusive_tax(self):
 		# if fully inclusive taxes and diff
 		if self.doc.get("taxes") and any(cint(t.included_in_print_rate) for t in self.doc.get("taxes")):
 			last_tax = self.doc.get("taxes")[-1]
@@ -559,21 +565,17 @@ class calculate_taxes_and_totals:
 			diff = flt(diff, self.doc.precision("rounding_adjustment"))
 
 			if diff and abs(diff) <= (5.0 / 10 ** last_tax.precision("tax_amount")):
-				self.doc.grand_total_diff = diff
-			else:
-				self.doc.grand_total_diff = 0
+				self.doc.rounding_adjustment = diff
 
 	def calculate_totals(self):
 		if self.doc.get("taxes"):
-			self.doc.grand_total = flt(self.doc.get("taxes")[-1].total) + flt(
-				self.doc.get("grand_total_diff")
-			)
+			self.doc.grand_total = flt(self.doc.get("taxes")[-1].total) + flt(self.doc.rounding_adjustment)
 		else:
 			self.doc.grand_total = flt(self.doc.net_total)
 
 		if self.doc.get("taxes"):
 			self.doc.total_taxes_and_charges = flt(
-				self.doc.grand_total - self.doc.net_total - flt(self.doc.get("grand_total_diff")),
+				self.doc.grand_total - self.doc.net_total - flt(self.doc.rounding_adjustment),
 				self.doc.precision("total_taxes_and_charges"),
 			)
 		else:
@@ -636,8 +638,8 @@ class calculate_taxes_and_totals:
 				self.doc.grand_total, self.doc.currency, self.doc.precision("rounded_total")
 			)
 
-			# rounding adjustment should always be the difference vetween grand and rounded total
-			self.doc.rounding_adjustment = flt(
+			# if print_in_rate is set, we would have already calculated rounding adjustment
+			self.doc.rounding_adjustment += flt(
 				self.doc.rounded_total - self.doc.grand_total, self.doc.precision("rounding_adjustment")
 			)
 
