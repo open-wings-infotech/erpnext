@@ -538,15 +538,33 @@ class calculate_taxes_and_totals:
 
 			tax.item_wise_tax_detail[key] = [tax_rate, flt(item_wise_tax_amount)]
 
+	# Commented by Vinod - START
+	# def round_off_totals(self, tax):
+	# 	if tax.account_head in frappe.flags.round_off_applicable_accounts:
+	# 		tax.tax_amount = round(tax.tax_amount, 0)
+	# 		tax.tax_amount_after_discount_amount = round(tax.tax_amount_after_discount_amount, 0)
+
+	# 	tax.tax_amount = flt(tax.tax_amount, tax.precision("tax_amount"))
+	# 	tax.tax_amount_after_discount_amount = flt(
+	# 		tax.tax_amount_after_discount_amount, tax.precision("tax_amount")
+	# 	)
+	# Commented by Vinod - END
+
+	# START VINOD
 	def round_off_totals(self, tax):
 		if tax.account_head in frappe.flags.round_off_applicable_accounts:
 			tax.tax_amount = round(tax.tax_amount, 0)
 			tax.tax_amount_after_discount_amount = round(tax.tax_amount_after_discount_amount, 0)
+		
+		from frappe.utils import get_number_format_info
+		number_format = frappe.db.get_value("Currency", tax.account_currency, "number_format")
+		decimal_str, comma_str, precision = get_number_format_info(number_format)
 
-		tax.tax_amount = flt(tax.tax_amount, tax.precision("tax_amount"))
+		tax.tax_amount = flt(tax.tax_amount, precision)
 		tax.tax_amount_after_discount_amount = flt(
-			tax.tax_amount_after_discount_amount, tax.precision("tax_amount")
+			tax.tax_amount_after_discount_amount, precision
 		)
+	# END VINOD
 
 	def round_off_base_values(self, tax):
 		# Round off to nearest integer based on regional settings
