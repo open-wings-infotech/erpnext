@@ -538,15 +538,33 @@ class calculate_taxes_and_totals:
 
 			tax.item_wise_tax_detail[key] = [tax_rate, flt(item_wise_tax_amount)]
 
+	# Commented by Vinod - START
+	# def round_off_totals(self, tax):
+	# 	if tax.account_head in frappe.flags.round_off_applicable_accounts:
+	# 		tax.tax_amount = round(tax.tax_amount, 0)
+	# 		tax.tax_amount_after_discount_amount = round(tax.tax_amount_after_discount_amount, 0)
+
+	# 	tax.tax_amount = flt(tax.tax_amount, tax.precision("tax_amount"))
+	# 	tax.tax_amount_after_discount_amount = flt(
+	# 		tax.tax_amount_after_discount_amount, tax.precision("tax_amount")
+	# 	)
+	# Commented by Vinod - END
+
+	# START VINOD
 	def round_off_totals(self, tax):
 		if tax.account_head in frappe.flags.round_off_applicable_accounts:
 			tax.tax_amount = round(tax.tax_amount, 0)
 			tax.tax_amount_after_discount_amount = round(tax.tax_amount_after_discount_amount, 0)
+		
+		from frappe.utils import get_number_format_info
+		number_format = frappe.db.get_value("Currency", tax.account_currency, "number_format")
+		decimal_str, comma_str, precision = get_number_format_info(number_format)
 
-		tax.tax_amount = flt(tax.tax_amount, tax.precision("tax_amount"))
+		tax.tax_amount = flt(tax.tax_amount, precision)
 		tax.tax_amount_after_discount_amount = flt(
-			tax.tax_amount_after_discount_amount, tax.precision("tax_amount")
+			tax.tax_amount_after_discount_amount, precision
 		)
+	# END VINOD
 
 	def round_off_base_values(self, tax):
 		# Round off to nearest integer based on regional settings
@@ -645,6 +663,31 @@ class calculate_taxes_and_totals:
 				if d.total_weight:
 					self.doc.total_net_weight += d.total_weight
 
+	# Comment Start - Vinod
+	# def set_rounded_total(self):
+	# 	if self.doc.get("is_consolidated") and self.doc.get("rounding_adjustment"):
+	# 		return
+
+	# 	if self.doc.meta.get_field("rounded_total"):
+	# 		if self.doc.is_rounded_total_disabled():
+	# 			self.doc.rounded_total = 0
+	# 			self.doc.base_rounded_total = 0
+	# 			self.doc.rounding_adjustment = 0
+	# 			return
+
+	# 		self.doc.rounded_total = round_based_on_smallest_currency_fraction(
+	# 			self.doc.grand_total, self.doc.currency, self.doc.precision("rounded_total")
+	# 		)
+
+	# 		# rounding adjustment should always be the difference vetween grand and rounded total
+	# 		self.doc.rounding_adjustment = flt(
+	# 			self.doc.rounded_total - self.doc.grand_total, self.doc.precision("rounding_adjustment")
+	# 		)
+
+	# 		self._set_in_company_currency(self.doc, ["rounding_adjustment", "rounded_total"])
+	# Comment End - Vinod
+
+	# Code Start - Vinod
 	def set_rounded_total(self):
 		if self.doc.get("is_consolidated") and self.doc.get("rounding_adjustment"):
 			return
@@ -665,7 +708,13 @@ class calculate_taxes_and_totals:
 				self.doc.rounded_total - self.doc.grand_total, self.doc.precision("rounding_adjustment")
 			)
 
+			if hasattr(self.doc, 'ex_system') and self.doc.ex_system and self.doc.rounding_method == 'MANUAL':
+				self.doc.rounding_adjustment = self.doc.custom_rounding_adjustment
+				self.doc.rounded_total = self.doc.grand_total + flt(self.doc.custom_rounding_adjustment)
+
+			self.doc.custom_rounding_adjustment = self.doc.rounding_adjustment
 			self._set_in_company_currency(self.doc, ["rounding_adjustment", "rounded_total"])
+	# Code End - Vinod
 
 	def _cleanup(self):
 		if not self.doc.get("is_consolidated"):
