@@ -1227,7 +1227,7 @@ class SerialBatchCreation:
 	def create_batch(self):
 		from erpnext.stock.doctype.batch.batch import make_batch
 
-		if self.is_rejected:
+		if hasattr(self, "is_rejected") and self.is_rejected:
 			bundle = frappe.db.get_value(
 				"Serial and Batch Bundle",
 				{
@@ -1374,7 +1374,7 @@ def throw_negative_batch_validation(batch_no, qty):
 def get_batchwise_qty(voucher_type, voucher_no):
 	bundles = frappe.get_all(
 		"Serial and Batch Bundle",
-		filters={"voucher_no": voucher_no, "voucher_type": voucher_type},
+		filters={"voucher_no": voucher_no, "voucher_type": voucher_type, "docstatus": (">", 0)},
 		pluck="name",
 	)
 	if not bundles:
