@@ -56,7 +56,7 @@ def execute(filters=None):
 			"account_currency": account_currency,
 		},
 		get_balance_row(
-			_("Cheques and Deposits incorrectly cleared"), amounts_not_reflected_in_system, account_currency
+			_("Cheques and Deposits incorrectly cleared."), amounts_not_reflected_in_system, account_currency
 		),
 		get_balance_row(_("Calculated Bank Balance"), bank_bal, account_currency),
 		{
@@ -104,13 +104,13 @@ def get_columns():
 			"fieldname": "debit",
 			"label": _("Debit"),
 			"fieldtype": "Float",
-			"width": 120,
+			"width": 150,
 		},
 		{
 			"fieldname": "credit",
 			"label": _("Credit"),
 			"fieldtype": "Float",
-			"width": 120,
+			"width": 150,
 		},
 		{
 			"fieldname": "payment_document",
