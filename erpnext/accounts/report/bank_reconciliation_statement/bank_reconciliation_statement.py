@@ -13,6 +13,7 @@ def execute(filters=None):
 		filters = {}
 
 	columns = get_columns()
+	rows = []
 
 	if not filters.get("account"):
 		return columns, []
@@ -39,46 +40,59 @@ def execute(filters=None):
 	
 	# Get unreconciled bank transactions
 	unreconciled_bank_transactions = get_unreconciled_bank_transactions(filters)
+	
+	# Calculate sum of pending bank transactions - separate debit and credit
+	pending_debit = sum(flt(t.get("debit", 0)) for t in unreconciled_bank_transactions)
+	pending_credit = sum(flt(t.get("credit", 0)) for t in unreconciled_bank_transactions)
 
-	data += [
+	rows += [
 		get_balance_row(
-			_("[GL] Bank Balance"), balance_as_per_system, account_currency
+			_("Bank Balance"), balance_as_per_system, account_currency
 		),
 		{
-			"payment_entry": _("[GL] Outstanding Cheques and Deposits to clear"),
+			"payment_entry": _("Outstanding Cheques and Deposits to clear"),
 			"debit": total_debit,
 			"credit": total_credit,
 			"account_currency": account_currency,
 		},
 		get_balance_row(
-			_("[GL] Cheques and Deposits incorrectly cleared"), amounts_not_reflected_in_system, account_currency
+			_("Cheques and Deposits incorrectly cleared"), amounts_not_reflected_in_system, account_currency
 		),
-		get_balance_row(_("[GL] Calculated Bank Balance"), bank_bal, account_currency),
-		get_balance_row(_("[Bank] Calculated Bank Balance"), bank_statement_balance, account_currency),
+		get_balance_row(_("Calculated Bank Balance"), bank_bal, account_currency),
+		{
+			"payment_entry": _("Bank Transactions pending reconciliation"),
+			"debit": pending_debit,
+			"credit": pending_credit,
+			"account_currency": account_currency,
+		},
 	]
+ 
+	# Add GL uncleared entries
+	if data:
+		rows.append({"debit": None, "credit": None,})
+		rows.append({
+			"payment_entry": _("<b>Outstanding Cheques and Deposits to clear</b>"),
+			"debit": None,
+			"credit": None
+		})
+		rows.extend(data)
 	
 	# Add unreconciled bank transactions
 	if unreconciled_bank_transactions:
-		data.append({
-			"payment_entry": _("[Bank] Unreconciled Bank Transactions"),
+		rows.append({"debit": None, "credit": None,})
+		rows.append({
+			"payment_entry": _("<b>Bank Transactions pending reconciliation</b>"),
 			"debit": None,
-			"credit": None,
-			"account_currency": account_currency,
+			"credit": None
 		})
-		data.extend(unreconciled_bank_transactions)
+		rows.extend(unreconciled_bank_transactions)
 
-	return columns, data
+	return columns, rows
 
 
 def get_columns():
 	return [
-		{"fieldname": "posting_date", "label": _("Posting Date"), "fieldtype": "Date", "width": 120},
-		{
-			"fieldname": "payment_document",
-			"label": _("Payment Document Type"),
-			"fieldtype": "Data",
-			"width": 150,
-		},
+		{"fieldname": "posting_date", "label": _("Posting Date"), "fieldtype": "Data", "width": 120},
 		{
 			"fieldname": "payment_entry",
 			"label": _("Payment Document"),
@@ -97,6 +111,12 @@ def get_columns():
 			"label": _("Credit"),
 			"fieldtype": "Float",
 			"width": 120,
+		},
+		{
+			"fieldname": "payment_document",
+			"label": _("Payment Document Type"),
+			"fieldtype": "Data",
+			"width": 150,
 		},
 		{
 			"fieldname": "against_account",
