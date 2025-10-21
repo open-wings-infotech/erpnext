@@ -1,7 +1,6 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
 
-
 import frappe
 from frappe import _
 from frappe.utils import flt, getdate
@@ -35,55 +34,68 @@ def execute(filters=None):
 		flt(balance_as_per_system) - flt(total_debit) + flt(total_credit) + amounts_not_reflected_in_system
 	)
 
+	# Get bank statement balance from Bank Transactions
+	bank_statement_balance = get_bank_statement_balance(filters)
+	
+	# Get unreconciled bank transactions
+	unreconciled_bank_transactions = get_unreconciled_bank_transactions(filters)
+
 	data += [
 		get_balance_row(
-			_("Bank Statement balance as per General Ledger"), balance_as_per_system, account_currency
+			_("[GL] Bank Balance"), balance_as_per_system, account_currency
 		),
-		{},
 		{
-			"payment_entry": _("Outstanding Cheques and Deposits to clear"),
+			"payment_entry": _("[GL] Outstanding Cheques and Deposits to clear"),
 			"debit": total_debit,
 			"credit": total_credit,
 			"account_currency": account_currency,
 		},
 		get_balance_row(
-			_("Cheques and Deposits incorrectly cleared"), amounts_not_reflected_in_system, account_currency
+			_("[GL] Cheques and Deposits incorrectly cleared"), amounts_not_reflected_in_system, account_currency
 		),
-		{},
-		get_balance_row(_("Calculated Bank Statement balance"), bank_bal, account_currency),
+		get_balance_row(_("[GL] Calculated Bank Balance"), bank_bal, account_currency),
+		get_balance_row(_("[Bank] Calculated Bank Balance"), bank_statement_balance, account_currency),
 	]
+	
+	# Add unreconciled bank transactions
+	if unreconciled_bank_transactions:
+		data.append({
+			"payment_entry": _("[Bank] Unreconciled Bank Transactions"),
+			"debit": None,
+			"credit": None,
+			"account_currency": account_currency,
+		})
+		data.extend(unreconciled_bank_transactions)
 
 	return columns, data
 
 
 def get_columns():
 	return [
-		{"fieldname": "posting_date", "label": _("Posting Date"), "fieldtype": "Date", "width": 90},
+		{"fieldname": "posting_date", "label": _("Posting Date"), "fieldtype": "Date", "width": 120},
 		{
 			"fieldname": "payment_document",
 			"label": _("Payment Document Type"),
 			"fieldtype": "Data",
-			"width": 220,
+			"width": 150,
 		},
 		{
 			"fieldname": "payment_entry",
 			"label": _("Payment Document"),
 			"fieldtype": "Dynamic Link",
 			"options": "payment_document",
-			"width": 220,
+			"width": 400,
 		},
 		{
 			"fieldname": "debit",
 			"label": _("Debit"),
-			"fieldtype": "Currency",
-			"options": "account_currency",
+			"fieldtype": "Float",
 			"width": 120,
 		},
 		{
 			"fieldname": "credit",
 			"label": _("Credit"),
-			"fieldtype": "Currency",
-			"options": "account_currency",
+			"fieldtype": "Float",
 			"width": 120,
 		},
 		{
@@ -246,3 +258,79 @@ def get_balance_row(label, amount, account_currency):
 			"credit": abs(amount),
 			"account_currency": account_currency,
 		}
+
+
+def get_bank_statement_balance(filters):
+	"""
+	Calculate bank statement balance from Bank Transaction records.
+	This includes all bank transactions (reconciled and unreconciled) up to the report date.
+	"""
+	# Get the bank account name from the account
+	bank_account_name = frappe.db.get_value(
+		"Bank Account", {"account": filters.account}, "name"
+	)
+	
+	if not bank_account_name:
+		return 0.0
+	
+	# Sum all deposits and withdrawals from Bank Transactions up to report date
+	result = frappe.db.sql(
+		"""
+		SELECT 
+			SUM(deposit) as total_deposits,
+			SUM(withdrawal) as total_withdrawals
+		FROM `tabBank Transaction`
+		WHERE bank_account = %(bank_account)s
+			AND date <= %(report_date)s
+			AND docstatus = 1
+		""",
+		{"bank_account": bank_account_name, "report_date": filters.get("report_date")},
+		as_dict=1,
+	)
+	
+	if result:
+		total_deposits = flt(result[0].get("total_deposits"))
+		total_withdrawals = flt(result[0].get("total_withdrawals"))
+		return total_deposits - total_withdrawals
+	
+	return 0.0
+
+
+def get_unreconciled_bank_transactions(filters):
+	"""
+	Get list of unreconciled bank transactions up to the report date.
+	"""
+	# Get the bank account name from the account
+	bank_account_name = frappe.db.get_value(
+		"Bank Account", {"account": filters.account}, "name"
+	)
+	
+	if not bank_account_name:
+		return []
+	
+	# Get unreconciled bank transactions
+	transactions = frappe.db.sql(
+		"""
+		SELECT 
+			date as posting_date,
+			'Bank Transaction' as payment_document,
+			name as payment_entry,
+			deposit as debit,
+			withdrawal as credit,
+			description as against_account,
+			reference_number as reference_no,
+			date as ref_date,
+			NULL as clearance_date,
+			currency as account_currency
+		FROM `tabBank Transaction`
+		WHERE bank_account = %(bank_account)s
+			AND date <= %(report_date)s
+			AND docstatus = 1
+			AND status != 'Reconciled'
+		ORDER BY date
+		""",
+		{"bank_account": bank_account_name, "report_date": filters.get("report_date")},
+		as_dict=1,
+	)
+	
+	return transactions
