@@ -302,10 +302,17 @@ Copy this entire script and paste it into the console:
 
 ```python
 import frappe
-from erpnext.accounts.utils import get_fiscal_year
 
-def preview_fiscal_year_changes(company_name):
+def preview_fiscal_year_changes(company_name, clear_cache=True):
     """Preview what will change before making updates"""
+    # Import inside function to ensure it's always available
+    from erpnext.accounts.utils import get_fiscal_year
+    
+    # Clear fiscal year cache to ensure fresh calculation
+    if clear_cache:
+        frappe.cache.delete_keys("fiscal_years")
+        print("Cache cleared for fresh fiscal year calculation\n")
+    
     print(f"\n{'='*60}")
     print(f"PREVIEW MODE - Company: {company_name}")
     print(f"{'='*60}\n")
@@ -359,12 +366,20 @@ def preview_fiscal_year_changes(company_name):
     return changes
 
 
-def update_gl_fiscal_year(company_name, dry_run=True):
+def update_gl_fiscal_year(company_name, dry_run=True, clear_cache=True):
     """Update fiscal_year in GL Entry table"""
+    # Import inside function to ensure it's always available
+    from erpnext.accounts.utils import get_fiscal_year
+    
+    # Clear fiscal year cache to ensure fresh calculation
+    if clear_cache:
+        frappe.cache.delete_keys("fiscal_years")
     
     if dry_run:
         print(f"\n{'='*60}")
         print("🔍 DRY RUN MODE - No changes will be committed")
+        if clear_cache:
+            print("Cache cleared for fresh fiscal year calculation")
         print(f"{'='*60}\n")
     else:
         print(f"\n{'='*60}")
@@ -425,10 +440,16 @@ def update_gl_fiscal_year(company_name, dry_run=True):
     print(f"\n{'='*60}\n")
 
 
-def verify_fiscal_year_update(company_name):
+def verify_fiscal_year_update(company_name, clear_cache=True):
     """Verify the fiscal year distribution after update"""
+    # Clear fiscal year cache to ensure fresh calculation
+    if clear_cache:
+        frappe.cache.delete_keys("fiscal_years")
+    
     print(f"\n{'='*60}")
     print(f"VERIFICATION - Company: {company_name}")
+    if clear_cache:
+        print("Cache cleared for fresh verification")
     print(f"{'='*60}\n")
     
     # Get distribution by fiscal year
@@ -458,9 +479,12 @@ def verify_fiscal_year_update(company_name):
 # Script is loaded and ready to use
 print("\n✅ Fiscal Year Migration Script Loaded Successfully!\n")
 print("Available functions:")
-print("  1. preview_fiscal_year_changes(company_name)")
-print("  2. update_gl_fiscal_year(company_name, dry_run=True)")
-print("  3. verify_fiscal_year_update(company_name)")
+print("  1. preview_fiscal_year_changes(company_name, clear_cache=True)")
+print("  2. update_gl_fiscal_year(company_name, dry_run=True, clear_cache=True)")
+print("  3. verify_fiscal_year_update(company_name, clear_cache=True)")
+print("\nOptional Parameters:")
+print("  - clear_cache=True  : Clear fiscal year cache before execution (recommended)")
+print("  - clear_cache=False : Keep cached fiscal year data (faster, but may use stale data)")
 print("\nNext step: Run the preview function (see guide below)")
 ```
 
@@ -478,6 +502,11 @@ Replace `Your Company Name` with your actual company name:
 ```python
 company_name = "Your Company Name"
 changes = preview_fiscal_year_changes(company_name)
+```
+
+**Note:** By default, this clears the fiscal year cache to ensure fresh calculations. If you want to use cached data for faster execution, use:
+```python
+changes = preview_fiscal_year_changes(company_name, clear_cache=False)
 ```
 
 **Expected Output:**
@@ -521,10 +550,13 @@ This will simulate the update without making changes:
 update_gl_fiscal_year(company_name, dry_run=True)
 ```
 
+**Note:** Cache clearing is enabled by default. The function will automatically clear the fiscal year cache to ensure accurate calculations.
+
 **Expected Output:**
 ```
 ============================================================
 🔍 DRY RUN MODE - No changes will be committed
+Cache cleared for fresh fiscal year calculation
 ============================================================
 
 Processing GL Entries...
@@ -572,10 +604,13 @@ Processing GL Entries...
 verify_fiscal_year_update(company_name)
 ```
 
+**Note:** This also clears cache by default to ensure verification uses fresh data from the database.
+
 **Expected Output:**
 ```
 ============================================================
 VERIFICATION - Company: Hub Client
+Cache cleared for fresh verification
 ============================================================
 
 Fiscal Year                    Count      First Date      Last Date
@@ -661,6 +696,14 @@ frappe.get_all("Company", fields=["name"])
 # List all fiscal years
 frappe.get_all("Fiscal Year", fields=["name", "year_start_date", "year_end_date"])
 ```
+
+### Issue: Getting incorrect or cached fiscal year results
+**Solution:** Clear the fiscal year cache manually
+```python
+# Clear cache and try again
+frappe.cache.delete_keys("fiscal_years")
+```
+**Note:** All functions now clear cache by default (`clear_cache=True`), but if you explicitly set `clear_cache=False` and see issues, use the above command.
 
 ### Issue: Some GL entries not updating
 **Solution:** Check if those dates fall outside defined fiscal year ranges
