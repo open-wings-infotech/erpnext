@@ -51,6 +51,30 @@ frappe.query_reports["Bank Reconciliation Statement"] = {
 			column.link_onclick =
 				"frappe.query_reports['Bank Reconciliation Statement'].open_utility_report()";
 		}
+		
+		// Make "Bank Transactions pending reconciliation" summary row bold
+		if (data && data.payment_entry && 
+		    data.payment_entry.includes("Bank Transactions pending reconciliation.") &&
+		    (column.fieldname == "payment_entry" || column.fieldname == "debit" || column.fieldname == "credit")) {
+			value = default_formatter(value, row, column, data);
+			return `<span style="font-weight: bold;">${value}</span>`;
+		}
+
+		// Make "Pending Clearance (Reconciliation Pending)." summary row bold
+		if (data && data.payment_entry && 
+		    data.payment_entry.includes("Pending Clearance / Pending Reconciliation.") &&
+		    (column.fieldname == "payment_entry" || column.fieldname == "debit" || column.fieldname == "credit")) {
+			value = default_formatter(value, row, column, data);
+			return `<span style="font-weight: bold;">${value}</span>`;
+		}
+
+		if (data && data.payment_entry && 
+		    data.payment_entry.includes("[Difference] Bank Balance (Calculated - Actual)") &&
+		    (column.fieldname == "debit") && data.debit != 0) {
+			value = default_formatter(value, row, column, data);
+			return `<span style="color: red;">${value}</span>`;
+		}
+		
 		return default_formatter(value, row, column, data);
 	},
 	open_utility_report: function () {

@@ -34,9 +34,6 @@ def execute(filters=None):
 	bank_bal = (
 		flt(balance_as_per_system) - flt(total_debit) + flt(total_credit) + amounts_not_reflected_in_system
 	)
-
-	# Get bank statement balance from Bank Transactions
-	bank_statement_balance = get_bank_statement_balance(filters)
 	
 	# Get unreconciled bank transactions
 	unreconciled_bank_transactions = get_unreconciled_bank_transactions(filters)
@@ -44,13 +41,19 @@ def execute(filters=None):
 	# Calculate sum of pending bank transactions - separate debit and credit
 	pending_debit = sum(flt(t.get("debit", 0)) for t in unreconciled_bank_transactions)
 	pending_credit = sum(flt(t.get("credit", 0)) for t in unreconciled_bank_transactions)
+	
+	# Get actual bank balance from Actual Bank Balance doctype
+	actual_bank_balance = get_actual_bank_balance(filters)
+	
+	# Calculate difference between calculated and actual balance
+	balance_difference = bank_bal - actual_bank_balance
 
 	rows += [
 		get_balance_row(
-			_("Bank Balance"), balance_as_per_system, account_currency
+			_("[GL] Bank Balance"), balance_as_per_system, account_currency
 		),
 		{
-			"payment_entry": _("Outstanding Cheques and Deposits to clear"),
+			"payment_entry": _("Pending Clearance / Pending Reconciliation"),
 			"debit": total_debit,
 			"credit": total_credit,
 			"account_currency": account_currency,
@@ -58,22 +61,18 @@ def execute(filters=None):
 		get_balance_row(
 			_("Cheques and Deposits incorrectly cleared."), amounts_not_reflected_in_system, account_currency
 		),
-		get_balance_row(_("Calculated Bank Balance"), bank_bal, account_currency),
-		{
-			"payment_entry": _("Bank Transactions pending reconciliation"),
-			"debit": pending_debit,
-			"credit": pending_credit,
-			"account_currency": account_currency,
-		},
+		get_balance_row(_("[Calculated] Bank Balance"), bank_bal, account_currency),
+		get_balance_row(_("[Actual] Bank Balance"), actual_bank_balance, account_currency),
+		get_balance_row(_("[Difference] Bank Balance (Calculated - Actual)"), balance_difference, account_currency),
 	]
  
 	# Add GL uncleared entries
 	if data:
 		rows.append({"debit": None, "credit": None,})
 		rows.append({
-			"payment_entry": _("<b>Outstanding Cheques and Deposits to clear</b>"),
-			"debit": None,
-			"credit": None
+			"payment_entry": _("Pending Clearance / Pending Reconciliation."),
+			"debit": total_debit,
+			"credit": total_credit
 		})
 		rows.extend(data)
 	
@@ -81,9 +80,9 @@ def execute(filters=None):
 	if unreconciled_bank_transactions:
 		rows.append({"debit": None, "credit": None,})
 		rows.append({
-			"payment_entry": _("<b>Bank Transactions pending reconciliation</b>"),
-			"debit": None,
-			"credit": None
+			"payment_entry": "Bank Transactions pending reconciliation.",
+			"debit": pending_debit,
+			"credit": pending_credit
 		})
 		rows.extend(unreconciled_bank_transactions)
 
@@ -279,78 +278,68 @@ def get_balance_row(label, amount, account_currency):
 			"account_currency": account_currency,
 		}
 
-
-def get_bank_statement_balance(filters):
-	"""
-	Calculate bank statement balance from Bank Transaction records.
-	This includes all bank transactions (reconciled and unreconciled) up to the report date.
-	"""
-	# Get the bank account name from the account
-	bank_account_name = frappe.db.get_value(
-		"Bank Account", {"account": filters.account}, "name"
-	)
-	
-	if not bank_account_name:
-		return 0.0
-	
-	# Sum all deposits and withdrawals from Bank Transactions up to report date
-	result = frappe.db.sql(
-		"""
-		SELECT 
-			SUM(deposit) as total_deposits,
-			SUM(withdrawal) as total_withdrawals
-		FROM `tabBank Transaction`
-		WHERE bank_account = %(bank_account)s
-			AND date <= %(report_date)s
-			AND docstatus = 1
-		""",
-		{"bank_account": bank_account_name, "report_date": filters.get("report_date")},
-		as_dict=1,
-	)
-	
-	if result:
-		total_deposits = flt(result[0].get("total_deposits"))
-		total_withdrawals = flt(result[0].get("total_withdrawals"))
-		return total_deposits - total_withdrawals
-	
-	return 0.0
-
-
 def get_unreconciled_bank_transactions(filters):
 	"""
 	Get list of unreconciled bank transactions up to the report date.
 	"""
 	# Get the bank account name from the account
 	bank_account_name = frappe.db.get_value(
-		"Bank Account", {"account": filters.account}, "name"
+		"Bank Account", {"account": filters["account"]}, "name"
 	)
 	
 	if not bank_account_name:
 		return []
 	
-	# Get unreconciled bank transactions
-	transactions = frappe.db.sql(
-		"""
-		SELECT 
-			date as posting_date,
-			'Bank Transaction' as payment_document,
-			name as payment_entry,
-			deposit as debit,
-			withdrawal as credit,
-			description as against_account,
-			reference_number as reference_no,
-			date as ref_date,
-			NULL as clearance_date,
-			currency as account_currency
-		FROM `tabBank Transaction`
-		WHERE bank_account = %(bank_account)s
-			AND date <= %(report_date)s
-			AND docstatus = 1
-			AND status != 'Reconciled'
-		ORDER BY date
-		""",
-		{"bank_account": bank_account_name, "report_date": filters.get("report_date")},
-		as_dict=1,
+	# Get unreconciled bank transactions using ORM
+	transactions = frappe.get_all(
+		"Bank Transaction",
+		filters={
+			"bank_account": bank_account_name,
+			"date": ["<=", filters["report_date"]],
+			"docstatus": 1,
+			"status": ["!=", "Reconciled"]
+		},
+		fields=[
+			"date as posting_date",
+			"name as payment_entry",
+			"deposit as debit",
+			"withdrawal as credit",
+			"description as against_account",
+			"reference_number as reference_no",
+			"date as ref_date",
+			"currency as account_currency"
+		],
+		order_by="date"
 	)
 	
+	# Add payment_document and clearance_date to each transaction
+	for t in transactions:
+		t["payment_document"] = "Bank Transaction"
+		t["clearance_date"] = None
+	
 	return transactions
+
+
+def get_actual_bank_balance(filters):
+	"""
+	Get the actual bank balance from Actual Bank Balance doctype for the exact report date.
+	Returns 0.0 if no record exists for that date.
+	"""
+	
+	# Get balance for the exact report date using Frappe ORM
+	result = frappe.get_all(
+		"Actual Bank Balance",
+		filters={
+			"bank_account": filters["account"],
+			"date": filters["report_date"],
+			"docstatus": 1
+		},
+		fields=["closing_balance"],
+		order_by="date desc",
+		limit=1
+	)
+	
+	if result:
+		return flt(result[0].get("closing_balance"))
+	
+	return 0.0
