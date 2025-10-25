@@ -62,8 +62,13 @@ def execute(filters=None):
 			_("Cheques and Deposits incorrectly cleared."), amounts_not_reflected_in_system, account_currency
 		),
 		get_balance_row(_("[Calculated] Bank Balance"), bank_bal, account_currency),
-		get_balance_row(_("[Actual] Bank Balance"), actual_bank_balance, account_currency),
-		get_balance_row(_("[Difference] Bank Balance (Calculated - Actual)"), balance_difference, account_currency),
+		get_balance_row(_("[Actual] Bank Balance"), actual_bank_balance, account_currency),  
+		{
+			"payment_entry": "[Difference] Bank Balance (Calculated - Actual)",
+			"debit": balance_difference,
+			"credit": 0,
+			"account_currency": account_currency,
+		}
 	]
  
 	# Add GL uncleared entries
