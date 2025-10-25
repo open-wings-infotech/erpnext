@@ -53,14 +53,15 @@ def execute(filters=None):
 			_("[GL] Bank Balance"), balance_as_per_system, account_currency
 		),
 		{
-			"payment_entry": _("Pending Clearance / Pending Reconciliation"),
+			"payment_entry": _("[GL] Pending Clearance / Pending Reconciliation"),
 			"debit": total_debit,
 			"credit": total_credit,
 			"account_currency": account_currency,
 		},
 		get_balance_row(
-			_("Cheques and Deposits incorrectly cleared."), amounts_not_reflected_in_system, account_currency
+			_("[GL] Cheques and Deposits incorrectly cleared."), amounts_not_reflected_in_system, account_currency
 		),
+  		{"debit": None, "credit": None},
 		get_balance_row(_("[Calculated] Bank Balance"), bank_bal, account_currency),
 		get_balance_row(_("[Actual] Bank Balance"), actual_bank_balance, account_currency),  
 		{
