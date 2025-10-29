@@ -69,6 +69,7 @@ class Asset(AccountsController):
 		default_finance_book: DF.Link | None
 		department: DF.Link | None
 		depr_entry_posting_status: DF.Literal["", "Successful", "Failed"]
+		depreciation_completed: DF.Check
 		depreciation_method: DF.Literal["", "Straight Line", "Double Declining Balance", "Manual"]
 		disposal_date: DF.Date | None
 		finance_books: DF.Table[AssetFinanceBook]
@@ -152,7 +153,9 @@ class Asset(AccountsController):
 						)
 		self.validate_expected_value_after_useful_life()
 		self.set_total_booked_depreciations()
-		self.total_asset_cost = self.gross_purchase_amount
+
+	def before_save(self):
+		self.total_asset_cost = self.gross_purchase_amount + self.additional_asset_cost
 		self.status = self.get_status()
 
 	def on_submit(self):
