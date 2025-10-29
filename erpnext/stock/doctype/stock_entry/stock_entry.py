@@ -1356,12 +1356,6 @@ class StockEntry(StockController):
 							d.item_code, self.work_order
 						)
 					)
-				elif flt(d.transfer_qty) > flt(self.fg_completed_qty):
-					frappe.throw(
-						_("Quantity in row {0} ({1}) must be same as manufactured quantity {2}").format(
-							d.idx, d.transfer_qty, self.fg_completed_qty
-						)
-					)
 
 				finished_items.append(d.item_code)
 
@@ -2279,10 +2273,12 @@ class StockEntry(StockController):
 
 			wo_item_qty = item.transferred_qty or item.required_qty
 
-			wo_qty_consumed = flt(wo_item_qty) - flt(item.consumed_qty)
+			wo_qty_unconsumed = flt(wo_item_qty) - flt(item.consumed_qty)
 			wo_qty_to_produce = flt(work_order_qty) - flt(wo.produced_qty)
+			bom_qty_per_unit = item.required_qty / wo.qty  # per-unit BOM qty
 
-			req_qty_each = (wo_qty_consumed) / (wo_qty_to_produce or 1)
+			req_qty_each = (wo_qty_unconsumed) / (wo_qty_to_produce or 1)
+			req_qty_each = min(req_qty_each, bom_qty_per_unit)
 
 			qty = req_qty_each * flt(self.fg_completed_qty)
 
