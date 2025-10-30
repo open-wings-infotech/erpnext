@@ -14,7 +14,7 @@
 	<tbody>
 		{% for(var i=0, l=data.length; i<l; i++) { %}
 			{% if (data[i]["posting_date"]) { %}
-			<tr>
+			<tr {% if (data[i]["payment_entry"] && (data[i]["payment_entry"].includes("Pending Clearance / Pending Reconciliation.") || data[i]["payment_entry"].includes("Bank Transactions pending reconciliation."))) { %}style="font-weight: bold;"{% } %}>
 				<td>{%= frappe.datetime.str_to_user(data[i]["posting_date"]) %}</td>
 				<td>{%= data[i]["payment_entry"] %}</td>
 				<td>{%= __("Against") %}: {%= data[i]["against_account"] %}
@@ -28,19 +28,19 @@
 						<br>{%= __("Clearance Date") %}: {%= frappe.datetime.str_to_user(data[i]["clearance_date"]) %}
 					{% } %}
 				</td>
-				<td style="text-align: right">{%= format_currency(data[i]["debit"]) %}</td>
-				<td style="text-align: right">{%= format_currency(data[i]["credit"]) %}</td>
+				<td style="text-align: right;{% if (data[i]["payment_entry"] && data[i]["payment_entry"].includes("[Difference") && data[i]["payment_entry"].includes("Bank Balance") && data[i]["debit"] != 0) { %} color: red;{% } %}">{%= data[i]["payment_entry"] ? data[i]["debit"] : "" %}</td>
+				<td style="text-align: right">{%= data[i]["payment_entry"] ? data[i]["credit"] : "." %}</td>
 			</tr>
 			{% } else { %}
-			<tr>
+			<tr {% if (data[i]["payment_entry"] && (data[i]["payment_entry"].includes("Pending Clearance / Pending Reconciliation.") || data[i]["payment_entry"].includes("Bank Transactions pending reconciliation."))) { %}style="font-weight: bold;"{% } %}>
 				<td></td>
 				<td></td>
 				<td>{%= data[i]["payment_entry"] %}</td>
-				<td style="text-align: right">{%= format_currency(data[i]["debit"]) %}</td>
-				<td style="text-align: right">{%= format_currency(data[i]["credit"]) %}</td>
+				<td style="text-align: right;{% if (data[i]["payment_entry"] && data[i]["payment_entry"].includes("[Difference") && data[i]["payment_entry"].includes("Bank Balance") && data[i]["debit"] != 0) { %} color: red;{% } %}">{%= data[i]["payment_entry"] ? data[i]["debit"] : "" %}</td>
+				<td style="text-align: right">{%= data[i]["payment_entry"] ? data[i]["credit"] : "." %}</td>
 			</tr>
 			{% } %}
 		{% } %}
 	</tbody>
 </table>
-<p class="text-right text-muted">{%= __("Printed on {0}", [frappe.datetime.str_to_user(frappe.datetime.get_datetime_as_string())]) %}</p>
+<p class="text-right text-muted">{%= __("Printed on {0} by {1}", [frappe.datetime.str_to_user(frappe.datetime.get_datetime_as_string()), frappe.session.user_fullname || frappe.session.user]) %}</p>
