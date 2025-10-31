@@ -1,7 +1,11 @@
 <h2 class="text-center">{%= __("Bank Reconciliation Statement") %}</h2>
-<h4 class="text-center">{%= filters.account && (filters.account + ", "+filters.report_date)  || "" %} {%= filters.company %}</h4>
-<hr>
-<table class="table table-bordered">
+<!-- <h4 class="text-center">{%= filters.account && (filters.account + ", "+filters.report_date)  || "" %} {%= filters.company %}</h4> -->
+<h4 class="text-center">{%= filters.report_date %}</h4>
+<div style="display: flex; justify-content: space-between;">
+	<h4>{%= filters.account %}</h4>
+	<h4>{%= filters.company %}</h4>
+</div>
+<table class="table table-bordered" style="margin-top: 0px">
 	<thead>
 		<tr>
 			<th style="width: 15%">{%= __("Posting Date") %}</th>
@@ -9,6 +13,7 @@
 			<th style="width: 40%">{%= __("Reference") %}</th>
 			<th style="width: 15%; text-align: right;">{%= __("Debit") %}</th>
 			<th style="width: 15%; text-align: right;">{%= __("Credit") %}</th>
+			<th style="width: 15%; text-align: right;">{%= __("Currency") %}</th>
 		</tr>
 	</thead>
 	<tbody>
@@ -30,6 +35,7 @@
 				</td>
 				<td style="text-align: right;{% if (data[i]["payment_entry"] && data[i]["payment_entry"].includes("[Difference") && data[i]["payment_entry"].includes("Bank Balance") && data[i]["debit"] != 0) { %} color: red;{% } %}">{%= data[i]["payment_entry"] ? parseFloat(data[i]["debit"]).toFixed(3) : "" %}</td>
 				<td style="text-align: right">{%= data[i]["payment_entry"] ? parseFloat(data[i]["credit"]).toFixed(3) : "." %}</td>
+				<td style="text-align: right">{%= data[i]["account_currency"] %}</td>
 			</tr>
 			{% } else { %}
 			<tr {% if (data[i]["payment_entry"] && (data[i]["payment_entry"].includes("Pending Clearance / Pending Reconciliation.") || data[i]["payment_entry"].includes("Bank Transactions pending reconciliation."))) { %}style="font-weight: bold;"{% } %}>
@@ -38,6 +44,7 @@
 				<td>{%= data[i]["payment_entry"] %}</td>
 				<td style="text-align: right;{% if (data[i]["payment_entry"] && data[i]["payment_entry"].includes("[Difference") && data[i]["payment_entry"].includes("Bank Balance") && data[i]["debit"] != 0) { %} color: red;{% } %}">{%= data[i]["payment_entry"] ? parseFloat(data[i]["debit"]).toFixed(3) : "" %}</td>
 				<td style="text-align: right">{%= data[i]["payment_entry"] ? parseFloat(data[i]["credit"]).toFixed(3) : "." %}</td>
+				<td style="text-align: right">{%= data[i]["account_currency"] %}</td>
 			</tr>
 			{% } %}
 		{% } %}
