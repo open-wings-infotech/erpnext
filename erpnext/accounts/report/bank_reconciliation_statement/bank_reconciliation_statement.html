@@ -1,6 +1,6 @@
 <h2 class="text-center">{%= __("Bank Reconciliation Statement") %}</h2>
 <!-- <h4 class="text-center">{%= filters.account && (filters.account + ", "+filters.report_date)  || "" %} {%= filters.company %}</h4> -->
-<h4 class="text-center">{%= filters.report_date %}</h4>
+<h4 class="text-center">as on {%= frappe.datetime.str_to_user(filters.report_date) %}</h4>
 <div style="display: flex; justify-content: space-between;">
 	<h4>{%= filters.account %}</h4>
 	<h4>{%= filters.company %}</h4>
