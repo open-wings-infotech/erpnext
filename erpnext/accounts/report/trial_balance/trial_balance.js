@@ -16,8 +16,16 @@ frappe.query_reports["Trial Balance"] = {
 			label: __("Fiscal Year"),
 			fieldtype: "Link",
 			options: "Fiscal Year",
-			default: erpnext.utils.get_fiscal_year(frappe.datetime.get_today()),
+			default: erpnext.utils.get_fiscal_year(date=frappe.datetime.get_today(), company=frappe.query_report.get_filter_value("company")),
 			reqd: 1,
+			get_query: function () {
+				var company = frappe.query_report.get_filter_value("company");
+				return {
+					filters: {
+						company: company,
+					},
+				};
+			},
 			on_change: function (query_report) {
 				var fiscal_year = query_report.get_values().fiscal_year;
 				if (!fiscal_year) {
