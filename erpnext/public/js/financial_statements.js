@@ -206,6 +206,14 @@ function get_filters() {
 			options: "Fiscal Year",
 			reqd: 1,
 			depends_on: "eval:doc.filter_based_on == 'Fiscal Year'",
+			get_query: function () {
+				var company = frappe.query_report.get_filter_value("company");
+				return {
+					filters: {
+						company: company,
+					},
+				};
+			},
 		},
 		{
 			fieldname: "to_fiscal_year",
@@ -214,6 +222,14 @@ function get_filters() {
 			options: "Fiscal Year",
 			reqd: 1,
 			depends_on: "eval:doc.filter_based_on == 'Fiscal Year'",
+			get_query: function () {
+				var company = frappe.query_report.get_filter_value("company");
+				return {
+					filters: {
+						company: company,
+					},
+				};
+			},
 		},
 		{
 			fieldname: "periodicity",
