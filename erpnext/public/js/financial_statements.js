@@ -206,7 +206,6 @@ function get_filters() {
 			options: "Fiscal Year",
 			reqd: 1,
 			depends_on: "eval:doc.filter_based_on == 'Fiscal Year'",
-			default: erpnext.utils.get_fiscal_year(date=frappe.datetime.get_today(), company=frappe.defaults.get_user_default("Company")),
 			get_query: function () {
 				var company = frappe.query_report.get_filter_value("company");
 				return {
@@ -223,7 +222,6 @@ function get_filters() {
 			options: "Fiscal Year",
 			reqd: 1,
 			depends_on: "eval:doc.filter_based_on == 'Fiscal Year'",
-			default: erpnext.utils.get_fiscal_year(date=frappe.datetime.get_today(), company=frappe.defaults.get_user_default("Company")),
 			get_query: function () {
 				var company = frappe.query_report.get_filter_value("company");
 				return {
