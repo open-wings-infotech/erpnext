@@ -3,6 +3,12 @@
 
 frappe.query_reports["Balance Sheet"] = $.extend({}, erpnext.financial_statements);
 
+// Disable tree mode — show flat table with level columns instead
+delete frappe.query_reports["Balance Sheet"]["tree"];
+delete frappe.query_reports["Balance Sheet"]["name_field"];
+delete frappe.query_reports["Balance Sheet"]["parent_field"];
+delete frappe.query_reports["Balance Sheet"]["initial_depth"];
+
 erpnext.utils.add_dimensions("Balance Sheet", 10);
 
 frappe.query_reports["Balance Sheet"]["filters"].push(
@@ -32,6 +38,11 @@ frappe.query_reports["Balance Sheet"]["filters"].push(
 	{
 		fieldname: "show_zero_values",
 		label: __("Show zero values"),
+		fieldtype: "Check",
+	},
+	{
+		fieldname: "hide_group_accounts",
+		label: __("Hide Group Accounts"),
 		fieldtype: "Check",
 	}
 );

@@ -32,8 +32,8 @@ value_fields = (
 
 def execute(filters=None):
 	validate_filters(filters)
-	data = get_data(filters)
-	columns = get_columns()
+	data, max_depth = get_data(filters)
+	columns = get_columns(max_depth)
 	return columns, data
 
 
@@ -82,7 +82,7 @@ def validate_filters(filters):
 
 def get_data(filters):
 	accounts = frappe.db.sql(
-		"""select name, account_number, parent_account, account_name, root_type, report_type, lft, rgt
+		"""select name, account_number, parent_account, account_name, root_type, report_type, lft, rgt, is_group
 
 		from `tabAccount` where company=%s order by lft""",
 		filters.company,
@@ -129,12 +129,12 @@ def get_data(filters):
 	)
 	accumulate_values_into_parents(accounts, accounts_by_name)
 
-	data = prepare_data(accounts, filters, parent_children_map, company_currency)
+	data, max_depth = prepare_data(accounts, filters, parent_children_map, company_currency, accounts_by_name)
 	data = filter_out_zero_value_rows(
 		data, parent_children_map, show_zero_values=filters.get("show_zero_values")
 	)
 
-	return data
+	return data, max_depth
 
 
 def get_opening_balances(filters, ignore_is_opening):
@@ -386,16 +386,23 @@ def accumulate_values_into_parents(accounts, accounts_by_name):
 				accounts_by_name[d.parent_account][key] += d[key]
 
 
-def prepare_data(accounts, filters, parent_children_map, company_currency):
+def prepare_data(accounts, filters, parent_children_map, company_currency, accounts_by_name):
 	data = []
+	max_depth = 0
 
 	for d in accounts:
 		# Prepare opening closing for group account
 		if parent_children_map.get(d.account) and filters.get("show_net_values"):
 			prepare_opening_closing(d)
 
+		# Skip group accounts if filter is set
+		is_group = bool(parent_children_map.get(d.name))
+		if filters.get("hide_group_accounts") and is_group:
+			continue
+
 		has_value = False
 		row = {
+			"is_group": is_group,
 			"account": d.name,
 			"parent_account": d.parent_account,
 			"indent": d.indent,
@@ -407,6 +414,24 @@ def prepare_data(accounts, filters, parent_children_map, company_currency):
 			),
 		}
 
+		# Walk the full ancestor chain
+		ancestors = []
+		current = d.parent_account
+		while current and current in accounts_by_name:
+			ancestors.append(current)
+			current = accounts_by_name[current].parent_account
+
+		# Reverse so that level 1 = root, level 2 = child of root, etc.
+		ancestors.reverse()
+		for i, ancestor in enumerate(ancestors, start=1):
+			row[f"parent_account_{i}"] = ancestor
+
+		if len(ancestors) > max_depth:
+			max_depth = len(ancestors)
+
+		# Store ancestor count for the second pass
+		row["_ancestor_count"] = len(ancestors)
+
 		for key in value_fields:
 			row[key] = flt(d.get(key, 0.0), 3)
 
@@ -417,20 +442,45 @@ def prepare_data(accounts, filters, parent_children_map, company_currency):
 		row["has_value"] = has_value
 		data.append(row)
 
+	# Second pass: fill blank level columns by copying the previous level
+	for row in data:
+		ancestor_count = row.pop("_ancestor_count", 0)
+		for i in range(1, max_depth + 1):
+			if not row.get(f"parent_account_{i}"):
+				row[f"parent_account_{i}"] = row.get(f"parent_account_{i - 1}") if i > 1 else row.get("account", "")
+
 	total_row = calculate_total_row(accounts, company_currency)
 	data.extend([{}, total_row])
 
-	return data
+	return data, max_depth
 
 
-def get_columns():
-	return [
+def get_columns(max_depth=0):
+	columns = []
+
+	# Dynamic ancestor columns: Level 1 (root) → Level N (immediate parent)
+	for i in range(1, max_depth + 1):
+		columns.append({
+			"fieldname": f"parent_account_{i}",
+			"label": _("Level {0}").format(i),
+			"fieldtype": "Link",
+			"options": "Account",
+			"width": 200,
+		})
+
+	columns += [
 		{
 			"fieldname": "account",
 			"label": _("Account"),
 			"fieldtype": "Link",
 			"options": "Account",
 			"width": 300,
+		},
+		{
+			"fieldname": "is_group",
+			"label": _("Is Group"),
+			"fieldtype": "Check",
+			"width": 80,
 		},
 		{
 			"fieldname": "currency",
@@ -482,6 +532,8 @@ def get_columns():
 			"width": 120,
 		},
 	]
+
+	return columns
 
 
 def prepare_opening_closing(row):

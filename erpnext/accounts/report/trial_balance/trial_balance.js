@@ -119,12 +119,13 @@ frappe.query_reports["Trial Balance"] = {
 			fieldtype: "Check",
 			default: 1,
 		},
+		{
+			fieldname: "hide_group_accounts",
+			label: __("Hide Group Accounts"),
+			fieldtype: "Check",
+		},
 	],
 	formatter: erpnext.financial_statements.formatter,
-	tree: true,
-	name_field: "account",
-	parent_field: "parent_account",
-	initial_depth: 3,
 };
 
 erpnext.utils.add_dimensions("Trial Balance", 6);

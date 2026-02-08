@@ -3,6 +3,12 @@
 
 frappe.query_reports["Profit and Loss Statement"] = $.extend({}, erpnext.financial_statements);
 
+// Disable tree mode — show flat table with level columns instead
+delete frappe.query_reports["Profit and Loss Statement"]["tree"];
+delete frappe.query_reports["Profit and Loss Statement"]["name_field"];
+delete frappe.query_reports["Profit and Loss Statement"]["parent_field"];
+delete frappe.query_reports["Profit and Loss Statement"]["initial_depth"];
+
 erpnext.utils.add_dimensions("Profit and Loss Statement", 10);
 
 frappe.query_reports["Profit and Loss Statement"]["filters"].push(
@@ -33,6 +39,11 @@ frappe.query_reports["Profit and Loss Statement"]["filters"].push(
 	{
 		fieldname: "show_zero_values",
 		label: __("Show zero values"),
+		fieldtype: "Check",
+	},
+	{
+		fieldname: "hide_group_accounts",
+		label: __("Hide Group Accounts"),
 		fieldtype: "Check",
 	}
 );
