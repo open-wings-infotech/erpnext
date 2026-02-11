@@ -96,10 +96,13 @@ def execute(filters=None):
 		filters.periodicity, period_list, filters.accumulated_values, company=filters.company
 	)
 
-	# Post-process: add ancestor level columns and is_group
+	# Save original columns for chart (before adding level columns)
+	chart_columns = columns[:]
+
+	# Post-process: add level columns and is_group
 	data, columns = add_level_columns(data, columns, filters)
 
-	chart = get_chart_data(filters, columns, asset, liability, equity, currency)
+	chart = get_chart_data(filters, chart_columns, asset, liability, equity, currency) if filters.get("show_chart") else None
 
 	report_summary, primitive_summary = get_report_summary(
 		period_list, asset, liability, equity, provisional_profit_loss, currency, filters
@@ -112,23 +115,21 @@ def execute(filters=None):
 
 
 def add_level_columns(data, columns, filters):
-	"""Add ancestor level columns, is_group column, and optionally filter out group accounts."""
+	"""Add is_group column (first, for collapse/expand arrows) and level columns for visual hierarchy.
+	Tree mode is always on - indent is preserved for collapse/expand.
+	The is_group column is the first column so DataTable renders the tree arrow there.
+	Level columns show each account at its depth (no filling).
+	"""
 	if not data:
 		return data, columns
 
-	# Build accounts_by_name lookup from the company's chart of accounts
 	company = filters.company
 	all_accounts = frappe.db.sql(
-		"""select name, parent_account, is_group from `tabAccount` where company=%s""",
+		"""select name, account_name, parent_account, is_group from `tabAccount` where company=%s""",
 		company,
 		as_dict=True,
 	)
 	accounts_by_name = {a.name: a for a in all_accounts}
-
-	# Build parent_children_map for is_group detection
-	parent_children_map = {}
-	for a in all_accounts:
-		parent_children_map.setdefault(a.parent_account or None, []).append(a)
 
 	max_depth = 0
 	processed_data = []
@@ -137,65 +138,90 @@ def add_level_columns(data, columns, filters):
 		account = row.get("account", "")
 		# Skip special rows (totals, blank rows, provisional P&L, etc.)
 		if not account or account.startswith("'") or account not in accounts_by_name:
+			# For special rows, put their label in level_1 so it still shows
+			if account:
+				label = row.get("account_name", account)
+				# Strip surrounding quotes added by ERPNext for total/summary rows
+				if isinstance(label, str) and label.startswith("'") and label.endswith("'"):
+					label = label[1:-1]
+				row["level_1"] = label
 			processed_data.append(row)
 			continue
 
 		# Determine is_group
-		is_group = bool(parent_children_map.get(account))
-		row["is_group"] = is_group
+		acc_info = accounts_by_name[account]
+		row["is_group"] = acc_info.is_group
 
 		# Skip group accounts if filter is set
-		if filters.get("hide_group_accounts") and is_group:
+		if filters.get("hide_group_accounts") and acc_info.is_group:
 			continue
 
-		# Walk the full ancestor chain
+		# Walk ancestor chain to determine depth
 		ancestors = []
-		current = accounts_by_name.get(account, {}).get("parent_account")
+		current = acc_info.parent_account
 		while current and current in accounts_by_name:
 			ancestors.append(current)
 			current = accounts_by_name[current].parent_account
 
-		# Reverse so that level 1 = root, level 2 = child of root, etc.
-		ancestors.reverse()
-		for i, ancestor in enumerate(ancestors, start=1):
-			row[f"parent_account_{i}"] = ancestor
+		ancestors.reverse()  # root first
+		level = len(ancestors) + 1  # 1-indexed
 
-		if len(ancestors) > max_depth:
-			max_depth = len(ancestors)
+		# Place account name in its own level column only
+		row[f"level_{level}"] = row.get("account_name") or account
 
+		if level > max_depth:
+			max_depth = level
+
+		row["_level"] = level
+		row["_ancestors"] = ancestors  # store for fill
 		processed_data.append(row)
 
-	# Second pass: fill blank level columns by copying the previous level
-	for row in processed_data:
-		account = row.get("account", "")
-		if not account or account.startswith("'"):
-			continue
-		for i in range(1, max_depth + 1):
-			if not row.get(f"parent_account_{i}"):
-				row[f"parent_account_{i}"] = row.get(f"parent_account_{i - 1}") if i > 1 else row.get("account", "")
+	# Fill columns: fill ancestor levels AND trailing blank levels
+	if filters.get("fill_columns"):
+		for row in processed_data:
+			row_level = row.pop("_level", None)
+			row_ancestors = row.pop("_ancestors", None)
+			if not row_level:
+				continue
+			# Fill parent levels with ancestor names
+			if row_ancestors:
+				for i, anc in enumerate(row_ancestors, start=1):
+					anc_info = accounts_by_name.get(anc)
+					row[f"level_{i}"] = anc_info.account_name if anc_info else anc
+			# Fill trailing blank levels
+			for i in range(row_level + 1, max_depth + 1):
+				if not row.get(f"level_{i}"):
+					row[f"level_{i}"] = row.get(f"level_{i - 1}", "")
+	else:
+		for row in processed_data:
+			row.pop("_level", None)
+			row.pop("_ancestors", None)
 
-	# Rebuild columns: Level columns + Account + Is Group + rest of original columns
-	level_columns = []
-	for i in range(1, max_depth + 1):
-		level_columns.append({
-			"fieldname": f"parent_account_{i}",
-			"label": _("Level {0}").format(i),
-			"fieldtype": "Link",
-			"options": "Account",
-			"width": 200,
-		})
+	# When hiding group accounts, remove indent (tree won't work without parent rows)
+	if filters.get("hide_group_accounts"):
+		for row in processed_data:
+			row.pop("indent", None)
 
-	# Original columns: account is first, then currency (hidden), then period columns
-	account_col = columns[0]  # the Account column
+	# Build columns
 	is_group_col = {
 		"fieldname": "is_group",
 		"label": _("Is Group"),
 		"fieldtype": "Check",
 		"width": 80,
 	}
-	rest_columns = columns[1:]  # currency + period columns
 
-	new_columns = level_columns + [account_col, is_group_col] + rest_columns
+	level_columns = []
+	for i in range(1, max_depth + 1):
+		level_columns.append({
+			"fieldname": f"level_{i}",
+			"label": _("Level {0}").format(i),
+			"fieldtype": "Data",
+			"width": 200,
+		})
+
+	# Remove original Account column (first), keep rest (currency + period columns)
+	rest_columns = columns[1:]
+	new_columns = [is_group_col] + level_columns + rest_columns
 
 	return processed_data, new_columns
 

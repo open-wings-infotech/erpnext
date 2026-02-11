@@ -395,8 +395,10 @@ def prepare_data(accounts, filters, parent_children_map, company_currency, accou
 		if parent_children_map.get(d.account) and filters.get("show_net_values"):
 			prepare_opening_closing(d)
 
+		# Determine is_group from the account record
+		is_group = d.is_group
+
 		# Skip group accounts if filter is set
-		is_group = bool(parent_children_map.get(d.name))
 		if filters.get("hide_group_accounts") and is_group:
 			continue
 
@@ -421,16 +423,17 @@ def prepare_data(accounts, filters, parent_children_map, company_currency, accou
 			ancestors.append(current)
 			current = accounts_by_name[current].parent_account
 
-		# Reverse so that level 1 = root, level 2 = child of root, etc.
-		ancestors.reverse()
-		for i, ancestor in enumerate(ancestors, start=1):
-			row[f"parent_account_{i}"] = ancestor
+		ancestors.reverse()  # root first
+		level = len(ancestors) + 1  # 1-indexed
 
-		if len(ancestors) > max_depth:
-			max_depth = len(ancestors)
+		# Place account name in its own level column only
+		row[f"level_{level}"] = row["account_name"]
 
-		# Store ancestor count for the second pass
-		row["_ancestor_count"] = len(ancestors)
+		if level > max_depth:
+			max_depth = level
+
+		row["_level"] = level
+		row["_ancestors"] = ancestors
 
 		for key in value_fields:
 			row[key] = flt(d.get(key, 0.0), 3)
@@ -442,14 +445,42 @@ def prepare_data(accounts, filters, parent_children_map, company_currency, accou
 		row["has_value"] = has_value
 		data.append(row)
 
-	# Second pass: fill blank level columns by copying the previous level
-	for row in data:
-		ancestor_count = row.pop("_ancestor_count", 0)
-		for i in range(1, max_depth + 1):
-			if not row.get(f"parent_account_{i}"):
-				row[f"parent_account_{i}"] = row.get(f"parent_account_{i - 1}") if i > 1 else row.get("account", "")
+	# Fill columns: fill ancestor levels AND trailing blank levels
+	if filters.get("fill_columns"):
+		for row in data:
+			row_level = row.pop("_level", None)
+			row_ancestors = row.pop("_ancestors", None)
+			if not row_level:
+				continue
+			# Fill parent levels with ancestor names
+			if row_ancestors:
+				for i, anc in enumerate(row_ancestors, start=1):
+					anc_info = accounts_by_name.get(anc)
+					if anc_info:
+						anc_name = f"{anc_info.account_number} - {anc_info.account_name}" if anc_info.get("account_number") else anc_info.account_name
+						row[f"level_{i}"] = anc_name
+					else:
+						row[f"level_{i}"] = anc
+			# Fill trailing blank levels
+			for i in range(row_level + 1, max_depth + 1):
+				if not row.get(f"level_{i}"):
+					row[f"level_{i}"] = row.get(f"level_{i - 1}", "")
+	else:
+		for row in data:
+			row.pop("_level", None)
+			row.pop("_ancestors", None)
+
+	# When hiding group accounts, remove indent (tree won't work without parent rows)
+	if filters.get("hide_group_accounts"):
+		for row in data:
+			row.pop("indent", None)
 
 	total_row = calculate_total_row(accounts, company_currency)
+	# Put total label in level_1
+	total_label = total_row.get("account_name", "")
+	if isinstance(total_label, str) and total_label.startswith("'") and total_label.endswith("'"):
+		total_label = total_label[1:-1]
+	total_row["level_1"] = total_label
 	data.extend([{}, total_row])
 
 	return data, max_depth
@@ -458,30 +489,24 @@ def prepare_data(accounts, filters, parent_children_map, company_currency, accou
 def get_columns(max_depth=0):
 	columns = []
 
-	# Dynamic ancestor columns: Level 1 (root) → Level N (immediate parent)
+	# Is Group column first (for collapse/expand arrow)
+	columns.append({
+		"fieldname": "is_group",
+		"label": _("Is Group"),
+		"fieldtype": "Check",
+		"width": 80,
+	})
+
+	# Dynamic level columns
 	for i in range(1, max_depth + 1):
 		columns.append({
-			"fieldname": f"parent_account_{i}",
+			"fieldname": f"level_{i}",
 			"label": _("Level {0}").format(i),
-			"fieldtype": "Link",
-			"options": "Account",
+			"fieldtype": "Data",
 			"width": 200,
 		})
 
 	columns += [
-		{
-			"fieldname": "account",
-			"label": _("Account"),
-			"fieldtype": "Link",
-			"options": "Account",
-			"width": 300,
-		},
-		{
-			"fieldname": "is_group",
-			"label": _("Is Group"),
-			"fieldtype": "Check",
-			"width": 80,
-		},
 		{
 			"fieldname": "currency",
 			"label": _("Currency"),

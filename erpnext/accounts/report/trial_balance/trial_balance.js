@@ -124,8 +124,47 @@ frappe.query_reports["Trial Balance"] = {
 			label: __("Hide Group Accounts"),
 			fieldtype: "Check",
 		},
+		{
+			fieldname: "fill_columns",
+			label: __("Fill Columns"),
+			fieldtype: "Check",
+		},
 	],
+	tree: true,
+	name_field: "account",
+	parent_field: "parent_account",
+	initial_depth: 3,
 	formatter: erpnext.financial_statements.formatter,
 };
 
 erpnext.utils.add_dimensions("Trial Balance", 6);
+
+// CSS to remove DataTable's inline indentation (hierarchy shown via level columns)
+let _tb_style_id = "tb-tree-no-indent-style";
+function _tb_inject_css() {
+	if (!document.getElementById(_tb_style_id)) {
+		let style = document.createElement("style");
+		style.id = _tb_style_id;
+		style.textContent = `
+			.dt-tree-node[style] { padding-left: 0 !important; display: block !important; }
+			.dt-tree-node__toggle[style] { left: 0 !important; }
+		`;
+		document.head.appendChild(style);
+	}
+}
+function _tb_remove_css() {
+	let el = document.getElementById(_tb_style_id);
+	if (el) el.remove();
+}
+
+let _tb_original_onload = frappe.query_reports["Trial Balance"]["onload"];
+frappe.query_reports["Trial Balance"]["onload"] = function (report) {
+	if (_tb_original_onload) _tb_original_onload.call(this, report);
+	_tb_inject_css();
+	$(document).off("page-change.tb_css").on("page-change.tb_css", function () {
+		if (frappe.get_route_str() !== "query-report/Trial Balance") {
+			_tb_remove_css();
+			$(document).off("page-change.tb_css");
+		}
+	});
+};
