@@ -45,6 +45,20 @@ frappe.query_reports["General Ledger"] = {
 			},
 		},
 		{
+			fieldname: "parent_account",
+			label: __("Parent Account"),
+			fieldtype: "Link",
+			options: "Account",
+			get_query: function () {
+				return {
+					filters: {
+						company: frappe.query_report.get_filter_value("company"),
+						is_group: 1,
+					},
+				};
+			},
+		},
+		{
 			fieldname: "voucher_no",
 			label: __("Voucher No"),
 			fieldtype: "Data",
@@ -221,6 +235,24 @@ frappe.query_reports["General Ledger"] = {
 			fieldname: "ignore_cr_dr_notes",
 			label: __("Ignore System Generated Credit / Debit Notes"),
 			fieldtype: "Check",
+		},
+		{
+			fieldname: "show_account_levels",
+			label: __("Show Account Hierarchy"),
+			fieldtype: "Check",
+			on_change: function () {
+				if (frappe.query_report.get_filter_value("show_account_levels")) {
+					let from_date = frappe.query_report.get_filter_value("from_date");
+					let to_date = frappe.query_report.get_filter_value("to_date");
+					if (from_date && to_date) {
+						let diff = frappe.datetime.get_diff(to_date, from_date);
+						if (diff > 366) {
+							frappe.msgprint(__("Date range cannot exceed 366 days when Show Account Hierarchy is enabled"));
+							frappe.query_report.set_filter_value("show_account_levels", 0);
+						}
+					}
+				}
+			},
 		},
 	],
 };

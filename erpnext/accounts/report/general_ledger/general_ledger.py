@@ -45,6 +45,10 @@ def execute(filters=None):
 
 	res = get_result(filters, account_details)
 
+	# Post-process: add account hierarchy level columns
+	if filters.get("show_account_levels"):
+		res, columns = add_level_columns(res, columns, filters)
+
 	return columns, res
 
 
@@ -78,6 +82,11 @@ def validate_filters(filters, account_details):
 
 	if filters.from_date > filters.to_date:
 		frappe.throw(_("From Date must be before To Date"))
+
+	if filters.get("show_account_levels"):
+		date_diff = (getdate(filters.to_date) - getdate(filters.from_date)).days
+		if date_diff > 366:
+			frappe.throw(_("Date range cannot exceed 366 days when Show Account Hierarchy is enabled"))
 
 	if filters.get("project"):
 		filters.project = frappe.parse_json(filters.get("project"))
@@ -222,6 +231,23 @@ def get_conditions(filters):
 		"Accounts Settings", "ignore_is_opening_check_for_reporting"
 	)
 
+	if filters.get("parent_account"):
+		# Expand parent_account to all descendant accounts using lft/rgt
+		parent_acc = filters.get("parent_account")
+		parent_data = frappe.db.get_value("Account", parent_acc, ["lft", "rgt"], as_dict=True)
+		if parent_data:
+			child_accounts = frappe.db.sql_list(
+				"""select name from `tabAccount` where lft >= %s and rgt <= %s""",
+				(parent_data.lft, parent_data.rgt),
+			)
+			if child_accounts:
+				# Merge with any existing account filter
+				if filters.get("account"):
+					existing = filters.account if isinstance(filters.account, list) else [filters.account]
+					filters.account = list(set(existing) & set(child_accounts)) or child_accounts
+				else:
+					filters.account = child_accounts
+
 	if filters.get("account"):
 		filters.account = get_accounts_with_children(filters.account)
 		if filters.account:
@@ -355,6 +381,75 @@ def get_party_name_map():
 	employees = frappe.get_all("Employee", fields=["name", "employee_name"])
 	party_map["Employee"] = {e.name: e.employee_name for e in employees}
 	return party_map
+
+
+def add_level_columns(data, columns, filters):
+	"""Add ancestor level columns for each GL entry's account.
+	Each row gets level_1 (root ancestor), level_2, ... level_N (the account itself).
+	"""
+	if not data:
+		return data, columns
+
+	company = filters.get("company")
+	all_accounts = frappe.db.sql(
+		"""select name, account_name, parent_account, is_group from `tabAccount` where company=%s""",
+		company,
+		as_dict=True,
+	)
+	accounts_by_name = {a.name: a for a in all_accounts}
+
+	max_depth = 0
+
+	for row in data:
+		account = row.get("account", "")
+		if not account or account not in accounts_by_name:
+			continue
+
+		# Walk ancestor chain
+		ancestors = []
+		current = accounts_by_name[account].parent_account
+		while current and current in accounts_by_name:
+			ancestors.append(current)
+			current = accounts_by_name[current].parent_account
+
+		ancestors.reverse()  # root first
+		level = len(ancestors) + 1  # 1-indexed
+
+		# Fill all ancestor levels
+		for i, anc in enumerate(ancestors, start=1):
+			anc_info = accounts_by_name.get(anc)
+			row[f"level_{i}"] = anc_info.account_name if anc_info else anc
+
+		# Place account name at its own level
+		acc_info = accounts_by_name[account]
+		row[f"level_{level}"] = acc_info.account_name or account
+
+		if level > max_depth:
+			max_depth = level
+
+	# Build level columns — insert after the Account column
+	level_columns = []
+	for i in range(1, max_depth + 1):
+		level_columns.append({
+			"fieldname": f"level_{i}",
+			"label": _("Level {0}").format(i),
+			"fieldtype": "Data",
+			"width": 180,
+		})
+
+	# Find the Account column index and insert level columns after it
+	account_col_idx = None
+	for idx, col in enumerate(columns):
+		if col.get("fieldname") == "account":
+			account_col_idx = idx
+			break
+
+	if account_col_idx is not None:
+		new_columns = columns[:account_col_idx + 1] + level_columns + columns[account_col_idx + 1:]
+	else:
+		new_columns = level_columns + columns
+
+	return data, new_columns
 
 
 def get_accounts_with_children(accounts):

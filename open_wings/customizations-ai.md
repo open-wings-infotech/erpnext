@@ -111,14 +111,51 @@ initial_depth: 3,
 
 **Use** `erpnext.financial_statements.formatter` as the formatter (no custom override needed since Trial Balance doesn't have Growth/Margin views that interfere with level columns)
 
-### 5. `profit_and_loss_statement.py`
+### 5. `general_ledger.py`
+
+**In `get_conditions()` function**, BEFORE the existing `if filters.get("account"):` block:
+- Add `parent_account` filter expansion:
+  - Get `lft`, `rgt` from the selected parent account
+  - Query all descendant accounts: `select name from tabAccount where lft >= %s and rgt <= %s`
+  - If `account` filter also set, intersect the two lists (keep only accounts that are both descendants of parent AND in the account filter)
+  - Otherwise, set `filters.account = child_accounts`
+
+**In `execute()` function**, after `res = get_result(filters, account_details)`:
+- Add: `if filters.get("show_account_levels"): res, columns = add_level_columns(res, columns, filters)`
+
+**Add new function `add_level_columns(data, columns, filters)`** (before `get_accounts_with_children`):
+- Query all accounts: `select name, account_name, parent_account, is_group from tabAccount where company=%s`
+- Build `accounts_by_name` dict
+- For each data row:
+  - Get `account` field; skip rows without account or not in accounts_by_name
+  - Walk ancestor chain (parent_account → grandparent → …), reverse to root-first
+  - `level = len(ancestors) + 1`
+  - Fill `row[f"level_{i}"]` with ancestor account_name for each ancestor
+  - Place account's own account_name at `row[f"level_{level}"]`
+  - Track `max_depth`
+- Build level columns (`level_1` through `level_{max_depth}`, Data type, 180px width)
+- Insert level columns after the Account column in the column list
+- Return `data, new_columns`
+
+### 6. `general_ledger.js`
+
+**Add `parent_account` filter** after the existing `account` filter:
+- fieldtype: Link, options: Account
+- `get_query`: filter to `is_group: 1` and current company
+
+**Add `show_account_levels` filter** at end of filters array:
+- fieldtype: Check, label: "Show Account Hierarchy"
+
+**Note**: General Ledger is NOT a tree report — no scoped CSS, tree config, or formatter override needed.
+
+### 7. `profit_and_loss_statement.py`
 
 Identical pattern to `balance_sheet.py`:
 - Save `chart_columns` before processing
 - Add `add_level_columns()` function (same logic as balance_sheet version)
 - Conditional chart: `if filters.get("show_chart") else None`
 
-### 6. `profit_and_loss_statement.js`
+### 8. `profit_and_loss_statement.js`
 
 Identical pattern to `balance_sheet.js`:
 - Add 3 filters: `hide_group_accounts`, `fill_columns`, `show_chart`
@@ -154,6 +191,8 @@ erpnext/accounts/report/balance_sheet/balance_sheet.js
 erpnext/accounts/report/balance_sheet/balance_sheet.py
 erpnext/accounts/report/profit_and_loss_statement/profit_and_loss_statement.js
 erpnext/accounts/report/profit_and_loss_statement/profit_and_loss_statement.py
+erpnext/accounts/report/general_ledger/general_ledger.js
+erpnext/accounts/report/general_ledger/general_ledger.py
 open_wings/customizations.md
 open_wings/customizations-ai.md
 ```
