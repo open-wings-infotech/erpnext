@@ -180,6 +180,8 @@ Identical pattern to `balance_sheet.js`:
 
 7. **`financial_statements.py` and `financial_statements.js`** — do NOT modify. All changes are post-processing in individual report files.
 
+8. **Print templates** — The shared `financial_statements.html` has a hard-coded column limit. Changed from `> 8` to `> 15` to accommodate level columns. The individual report `.html` files remain unchanged (`{% include ... %}`).
+
 ---
 
 ## Files Changed (for .customized-files tracking)
@@ -187,10 +189,13 @@ Identical pattern to `balance_sheet.js`:
 ```
 erpnext/accounts/report/trial_balance/trial_balance.js
 erpnext/accounts/report/trial_balance/trial_balance.py
+erpnext/accounts/report/trial_balance/trial_balance.html
 erpnext/accounts/report/balance_sheet/balance_sheet.js
 erpnext/accounts/report/balance_sheet/balance_sheet.py
+erpnext/accounts/report/balance_sheet/balance_sheet.html
 erpnext/accounts/report/profit_and_loss_statement/profit_and_loss_statement.js
 erpnext/accounts/report/profit_and_loss_statement/profit_and_loss_statement.py
+erpnext/accounts/report/profit_and_loss_statement/profit_and_loss_statement.html
 erpnext/accounts/report/general_ledger/general_ledger.js
 erpnext/accounts/report/general_ledger/general_ledger.py
 open_wings/customizations.md
