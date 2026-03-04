@@ -42,3 +42,16 @@ Added **account hierarchy level columns** and a **Parent Account filter** to the
 - `parent_account` filter in `get_conditions()` expands to all descendant accounts via `lft/rgt` SQL query, then merges with any existing `account` filter
 - `add_level_columns()` in `general_ledger.py` queries all accounts for the company, walks ancestor chain for each GL entry row, and fills level columns (root first). Level columns are inserted after the Account column.
 - Unlike Balance Sheet/Trial Balance/P&L, General Ledger is NOT a tree report — no scoped CSS or tree config needed
+
+---
+
+## Payment Entry — Clear Clearance Date on Cancel
+
+**Files changed:**
+- `erpnext/accounts/doctype/payment_entry/payment_entry.py`
+
+**What changed:**
+
+When a Payment Entry is cancelled, the linked Bank Transaction is unlinked but the `clearance_date` was NOT cleared. When the cancelled Payment Entry is then amended, the `clearance_date` gets copied to the new draft (Frappe's amend intentionally copies `no_copy` fields). This causes the amended Payment Entry to not appear in Bank Reconciliation.
+
+**Fix:** Added `self.db_set("clearance_date", None)` at the end of `on_cancel()` so the clearance date is cleared when cancelling, ensuring the amended entry starts clean.

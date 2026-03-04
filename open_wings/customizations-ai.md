@@ -148,6 +148,15 @@ initial_depth: 3,
 
 **Note**: General Ledger is NOT a tree report — no scoped CSS, tree config, or formatter override needed.
 
+### 9. `payment_entry.py`
+
+**In `on_cancel()` method**, add at the end (after `self.set_status()`):
+```python
+# Clear clearance_date so amended doc doesn't inherit it
+self.db_set("clearance_date", None)
+```
+**Why**: Frappe's `copy_doc` during amend passes `from_amend=1` which skips `no_copy` checks. If `clearance_date` is still set on the cancelled doc, the amended copy inherits it and won't show in Bank Reconciliation.
+
 ### 7. `profit_and_loss_statement.py`
 
 Identical pattern to `balance_sheet.py`:
@@ -198,6 +207,7 @@ erpnext/accounts/report/profit_and_loss_statement/profit_and_loss_statement.py
 erpnext/accounts/report/profit_and_loss_statement/profit_and_loss_statement.html
 erpnext/accounts/report/general_ledger/general_ledger.js
 erpnext/accounts/report/general_ledger/general_ledger.py
+erpnext/accounts/doctype/payment_entry/payment_entry.py
 open_wings/customizations.md
 open_wings/customizations-ai.md
 ```

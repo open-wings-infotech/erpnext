@@ -227,6 +227,9 @@ class PaymentEntry(AccountsController):
 		self.delink_advance_entry_references()
 		self.set_status()
 
+		# Clear clearance_date so amended doc doesn't inherit it
+		self.db_set("clearance_date", None)
+
 	def update_payment_requests(self, cancel=False):
 		from erpnext.accounts.doctype.payment_request.payment_request import (
 			update_payment_requests_as_per_pe_references,
